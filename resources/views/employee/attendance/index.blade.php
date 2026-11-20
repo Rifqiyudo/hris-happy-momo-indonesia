@@ -1,267 +1,265 @@
 @extends('employee.layouts.app')
 
-@push('styles')
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <style>
-        /* Animasi Laser Scanning Face ID */
-        .scan-line {
-            width: 100%;
-            height: 2px;
-            background: #00ff00;
-            box-shadow: 0 0 10px #00ff00;
-            position: absolute;
-            top: 0;
-            animation: scan 3s infinite linear;
-            opacity: 0.6;
-        }
-        @keyframes scan {
-            0% { top: 0%; }
-            50% { top: 100%; }
-            100% { top: 0%; }
-        }
-        /* Kotak Wajah */
-        .face-frame {
-            border: 2px solid rgba(255, 255, 255, 0.5);
-            border-radius: 20px;
-            box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.6); /* Gelapkan area luar */
-        }
-    </style>
-@endpush
-
 @section('content')
-<div class="bg-gray-900 h-screen flex flex-col relative overflow-hidden">
+<div class="fixed inset-0 bg-white z-50 flex flex-col overflow-hidden font-sans">
     
-    <div class="absolute top-0 left-0 right-0 z-30 p-4 flex justify-between items-center text-white">
-        <a href="{{ route('employee.dashboard') }}" class="bg-black/30 p-2 rounded-full backdrop-blur-sm">
-            <i class="fas fa-arrow-left"></i>
+    {{-- Top Bar --}}
+    <div class="p-5 flex justify-between items-center border-b bg-white z-10">
+        <a href="{{ route('employee.dashboard') }}" class="text-slate-800 w-10 h-10 flex items-center justify-center bg-slate-50 rounded-xl">
+            <i class="fas fa-chevron-left"></i>
         </a>
-        <h1 class="font-bold text-sm tracking-wide">FACE RECOGNITION</h1>
-        <div class="w-8"></div>
+        <h1 class="text-[11px] font-black uppercase tracking-[0.2em] text-slate-800">Presensi Lokasi</h1>
+        <div class="w-10"></div>
     </div>
 
-    <div class="relative flex-1 bg-black flex items-center justify-center overflow-hidden">
-        <video id="video" autoplay playsinline class="absolute inset-0 w-full h-full object-cover z-0"></video>
+    {{-- SECTION 1: MAP & RADIUS VALIDATION --}}
+    <div id="section-map" class="relative flex-1 bg-slate-100 flex flex-col">
+        <div id="map" class="flex-1 z-0"></div>
+        
+        <div class="p-8 bg-white rounded-t-[3rem] shadow-[0_-15px_50px_rgba(0,0,0,0.08)] border-t z-10">
+            <div class="flex items-center gap-5 mb-8">
+                <div id="status-icon" class="w-14 h-14 rounded-[1.2rem] bg-slate-100 text-slate-400 flex items-center justify-center transition-all duration-500">
+                    <i class="fas fa-location-arrow text-xl"></i>
+                </div>
+                <div class="flex-1">
+                    <p id="status-text" class="text-[10px] font-black uppercase tracking-[0.15em] text-slate-400">Menghubungkan Satelit...</p>
+                    <p id="location-name" class="text-xs font-bold text-slate-700 mt-1 leading-tight">Mencari titik presisi GPS anda...</p>
+                </div>
+            </div>
+
+            {{-- Fields tambahan jika di luar radius --}}
+            <div id="visit-fields" class="hidden mb-6 space-y-4 animate-fadeIn">
+                <div class="relative">
+                    <i class="fas fa-building absolute left-5 top-5 text-slate-400 text-xs"></i>
+                    <input type="text" name="address_name" id="address_name" placeholder="Nama Lokasi / Instansi Klien" 
+                        class="w-full bg-slate-50 border-none rounded-2xl py-4 pl-12 pr-6 text-xs font-bold focus:ring-2 focus:ring-amber-500 transition-all">
+                </div>
+                <div class="relative">
+                    <i class="fas fa-sticky-note absolute left-5 top-5 text-slate-400 text-xs"></i>
+                    <textarea id="notes" placeholder="Tujuan atau hasil kunjungan singkat..." 
+                        class="w-full bg-slate-50 border-none rounded-2xl py-4 pl-12 pr-6 text-xs font-bold focus:ring-2 focus:ring-amber-500 h-24 transition-all"></textarea>
+                </div>
+            </div>
+
+            <button onclick="checkAndProceed()" id="btn-next" disabled 
+                class="w-full py-5 rounded-[1.5rem] bg-slate-200 text-slate-400 font-black text-[11px] tracking-[0.2em] uppercase transition-all shadow-lg active:scale-95">
+                Validasi Lokasi...
+            </button>
+        </div>
+    </div>
+
+    {{-- SECTION 2: CAMERA FACE SCAN --}}
+    <div id="section-camera" class="hidden fixed inset-0 bg-black z-[100] flex flex-col items-center justify-center">
+        <video id="video" autoplay playsinline class="w-full h-full object-cover"></video>
         <canvas id="canvas" class="hidden"></canvas>
         
-        <div class="relative z-10 w-64 h-80 face-frame flex flex-col justify-between p-4 relative overflow-hidden">
-            <div class="absolute top-0 left-0 w-8 h-8 border-t-4 border-l-4 border-green-500 rounded-tl-xl"></div>
-            <div class="absolute top-0 right-0 w-8 h-8 border-t-4 border-r-4 border-green-500 rounded-tr-xl"></div>
-            <div class="absolute bottom-0 left-0 w-8 h-8 border-b-4 border-l-4 border-green-500 rounded-bl-xl"></div>
-            <div class="absolute bottom-0 right-0 w-8 h-8 border-b-4 border-r-4 border-green-500 rounded-br-xl"></div>
-
-            <div class="scan-line"></div>
-
-            <p class="text-white text-center text-xs mt-2 font-mono opacity-80 bg-black/50 rounded px-2 py-1 mx-auto">
-                Posisikan wajah di dalam kotak
-            </p>
-        </div>
-
-        <div id="loading-overlay" class="absolute inset-0 z-20 bg-black flex flex-col items-center justify-center text-white transition-opacity duration-500">
-            <div class="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-4"></div>
-            <p class="animate-pulse font-mono">Mencari Koordinat GPS...</p>
-        </div>
-    </div>
-
-    <div class="bg-white rounded-t-3xl p-6 relative z-30 -mt-6">
-        
-        <div class="mb-4">
-            <div class="flex justify-between items-center mb-2">
-                <span class="text-xs font-bold text-gray-500 uppercase">Lokasi Anda</span>
-                <span id="distance-info" class="text-xs font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded">Menghitung jarak...</span>
+        {{-- Frame Overlay --}}
+        <div class="absolute inset-0 flex items-center justify-center pointer-events-none">
+            <div class="w-64 h-80 border-2 border-white/20 rounded-[3.5rem] shadow-[0_0_0_9999px_rgba(0,0,0,0.85)] relative">
+                <div class="absolute top-0 w-full text-center -translate-y-14">
+                    <span class="text-[10px] font-black uppercase tracking-[0.3em] text-indigo-400">Face Recognition</span>
+                </div>
+                <div class="absolute w-full h-1 bg-gradient-to-r from-transparent via-indigo-500 to-transparent shadow-[0_0_20px_#6366f1] top-0 animate-scan"></div>
+                
+                {{-- Corner Accents --}}
+                <div class="absolute -top-1 -left-1 w-8 h-8 border-t-4 border-l-4 border-indigo-500 rounded-tl-2xl"></div>
+                <div class="absolute -top-1 -right-1 w-8 h-8 border-t-4 border-r-4 border-indigo-500 rounded-tr-2xl"></div>
             </div>
-            <div id="map" class="w-full h-32 rounded-xl border border-gray-200 z-0"></div>
-            <input type="hidden" id="latitude">
-            <input type="hidden" id="longitude">
         </div>
 
-        <div class="grid grid-cols-2 gap-4">
-            <button onclick="takeSnapshot('in')" id="btn-in" disabled
-                class="bg-emerald-500 text-white py-3 rounded-xl font-bold shadow-lg shadow-emerald-200 opacity-50 transition active:scale-95 flex items-center justify-center gap-2">
-                <i class="fas fa-camera"></i> ABSEN MASUK
+        <div class="absolute bottom-16 px-10 w-full flex flex-col gap-4">
+            <button onclick="capture()" class="w-full bg-white text-slate-900 py-6 rounded-3xl font-black uppercase text-[11px] tracking-[0.2em] shadow-2xl active:scale-95 transition-all">
+                <i class="fas fa-camera-retro mr-2"></i> Ambil Foto & Absen
             </button>
-            <button onclick="takeSnapshot('out')" id="btn-out" disabled
-                class="bg-rose-500 text-white py-3 rounded-xl font-bold shadow-lg shadow-rose-200 opacity-50 transition active:scale-95 flex items-center justify-center gap-2">
-                <i class="fas fa-sign-out-alt"></i> PULANG
+            <button onclick="backToMap()" class="w-full text-white/40 py-2 text-[10px] font-black uppercase tracking-[0.3em] hover:text-white transition-colors">
+                <i class="fas fa-times mr-2"></i> Batalkan
             </button>
         </div>
     </div>
 
+    {{-- HIDDEN FORM --}}
+    <form id="form-absen" action="{{ route('employee.attendance.store') }}" method="POST" class="hidden">
+        @csrf
+        <input type="hidden" name="latitude" id="in-lat">
+        <input type="hidden" name="longitude" id="in-lng">
+        <input type="hidden" name="image" id="in-img">
+        <input type="hidden" name="category" id="in-cat" value="office">
+        <input type="hidden" name="address_name" id="in-address">
+        <input type="hidden" name="notes" id="in-notes">
+    </form>
 </div>
+
+<style>
+    @keyframes scan { 0% { top: 0%; } 100% { top: 100%; } }
+    .animate-scan { animation: scan 3s infinite linear; }
+    .animate-fadeIn { animation: fadeIn 0.5s cubic-bezier(0.4, 0, 0.2, 1) forwards; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+    .leaflet-container { font-family: inherit; }
+</style>
 @endsection
 
 @push('scripts')
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 
 <script>
-    // --- KONFIGURASI KANTOR (GANTI DISINI) ---
-    // Koordinat Margomulyo Permai (Contoh)
-    const OFFICE_LAT = -7.245842;
-    const OFFICE_LNG = 112.678456;
-    const RADIUS_KM = 0.5; // Radius 500 meter
-
+    const OFFICE_LAT = {{ $user->branch->latitude ?? -7.2504 }};
+    const OFFICE_LNG = {{ $user->branch->longitude ?? 112.7688 }};
+    const RADIUS_M = {{ $user->branch->radius ?? 100 }};
+    
     let map, userMarker, officeCircle;
+    let isWithinRadius = false;
 
-    // 1. SETUP KAMERA
-    const video = document.getElementById('video');
-    const canvas = document.getElementById('canvas');
+    // 1. Inisialisasi Peta
+    function initMap() {
+        map = L.map('map', { zoomControl: false }).setView([OFFICE_LAT, OFFICE_LNG], 17);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
-    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-        navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } })
-            .then(stream => video.srcObject = stream)
-            .catch(err => Swal.fire('Error Kamera', 'Izin kamera ditolak!', 'error'));
-    }
-
-    // 2. SETUP PETA (LEAFLET)
-    function initMap(lat, lng) {
-        // Inisialisasi Peta
-        map = L.map('map').setView([lat, lng], 15);
-
-        // Pakai Tile Layer Gratis (OpenStreetMap)
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '© OpenStreetMap'
-        }).addTo(map);
-
-        // Marker Posisi User
-        const userIcon = L.icon({
-            iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/markers/marker-icon-2x-blue.png',
-            shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
-            iconSize: [25, 41],
-            iconAnchor: [12, 41],
-            popupAnchor: [1, -34],
-            shadowSize: [41, 41]
-        });
-        userMarker = L.marker([lat, lng], {icon: userIcon}).addTo(map).bindPopup("Posisi Anda").openPopup();
-
-        // Lingkaran Radius Kantor (Zona Hijau)
         officeCircle = L.circle([OFFICE_LAT, OFFICE_LNG], {
-            color: 'green',
-            fillColor: '#22c55e',
-            fillOpacity: 0.2,
-            radius: RADIUS_KM * 1000 // Konversi KM ke Meter
+            color: '#6366f1', weight: 2, fillColor: '#6366f1', fillOpacity: 0.1, radius: RADIUS_M
         }).addTo(map);
 
-        // Marker Kantor
-        const officeIcon = L.icon({
-            iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/markers/marker-icon-2x-green.png',
-            shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
-            iconSize: [25, 41],
-            iconAnchor: [12, 41]
-        });
-        L.marker([OFFICE_LAT, OFFICE_LNG], {icon: officeIcon}).addTo(map).bindPopup("Kantor Happy Momo");
+        trackUser();
     }
 
-    // 3. GET LOCATION
-    if (navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition(successLoc, errorLoc, {
-            enableHighAccuracy: true,
-            timeout: 10000
-        });
-    }
-
-    function successLoc(position) {
-        const lat = position.coords.latitude;
-        const lng = position.coords.longitude;
-
-        // Simpan ke input hidden
-        document.getElementById('latitude').value = lat;
-        document.getElementById('longitude').value = lng;
-
-        // Hitung Jarak
-        const distance = calculateDistance(lat, lng, OFFICE_LAT, OFFICE_LNG);
-        const distMeter = Math.round(distance * 1000);
-
-        // Update UI
-        document.getElementById('loading-overlay').classList.add('opacity-0', 'pointer-events-none');
-        
-        // Cek apakah dalam jangkauan?
-        const btnIn = document.getElementById('btn-in');
-        const btnOut = document.getElementById('btn-out');
-        const distInfo = document.getElementById('distance-info');
-
-        if (distance <= RADIUS_KM) {
-            distInfo.innerHTML = `<i class="fas fa-check-circle"></i> Dalam Jangkauan (${distMeter}m)`;
-            distInfo.classList.replace('text-blue-600', 'text-green-600');
-            distInfo.classList.replace('bg-blue-50', 'bg-green-50');
-            
-            // Aktifkan Tombol
-            btnIn.disabled = false; btnIn.classList.remove('opacity-50');
-            btnOut.disabled = false; btnOut.classList.remove('opacity-50');
-        } else {
-            distInfo.innerHTML = `<i class="fas fa-times-circle"></i> Terlalu Jauh (${distMeter}m)`;
-            distInfo.classList.replace('text-blue-600', 'text-red-600');
-            distInfo.classList.replace('bg-blue-50', 'bg-red-50');
-            
-            Swal.fire({
-                icon: 'warning',
-                title: 'Diluar Lokasi!',
-                text: `Anda berjarak ${distMeter} meter dari kantor. Maksimal ${RADIUS_KM*1000} meter.`,
-                confirmButtonColor: '#3085d6',
-            });
+    // 2. Pantau Lokasi User
+    function trackUser() {
+        if (!navigator.geolocation) {
+            Swal.fire('Error', 'Browser tidak mendukung GPS', 'error');
+            return;
         }
 
-        // Tampilkan Peta
-        initMap(lat, lng);
+        navigator.geolocation.watchPosition((pos) => {
+            const lat = pos.coords.latitude;
+            const lng = pos.coords.longitude;
+            const dist = calculateDistance(lat, lng, OFFICE_LAT, OFFICE_LNG) * 1000;
+
+            document.getElementById('in-lat').value = lat;
+            document.getElementById('in-lng').value = lng;
+
+            if (userMarker) {
+                userMarker.setLatLng([lat, lng]);
+            } else {
+                const userIcon = L.divIcon({
+                    className: 'custom-div-icon',
+                    html: "<div style='background-color:#4f46e5; height:12px; width:12px; border:3px solid white; border-radius:50%; box-shadow:0 0 10px rgba(0,0,0,0.3);'></div>",
+                    iconSize: [12, 12], iconAnchor: [6, 6]
+                });
+                userMarker = L.marker([lat, lng], {icon: userIcon}).addTo(map);
+            }
+            
+            map.panTo([lat, lng]);
+            updateUI(dist);
+        }, (err) => {
+            Swal.fire('GPS Lemah', 'Pastikan GPS Aktif & Berikan Izin Lokasi', 'warning');
+        }, { enableHighAccuracy: true, timeout: 15000 });
     }
 
-    function errorLoc(err) {
-        Swal.fire('GPS Error', 'Gagal mendapatkan lokasi. Pastikan GPS aktif!', 'error');
+    function updateUI(distance) {
+        const icon = document.getElementById('status-icon');
+        const text = document.getElementById('status-text');
+        const locName = document.getElementById('location-name');
+        const btn = document.getElementById('btn-next');
+        const visitFields = document.getElementById('visit-fields');
+
+        btn.disabled = false;
+
+        if (distance <= RADIUS_M) {
+            isWithinRadius = true;
+            icon.className = "w-14 h-14 rounded-[1.2rem] bg-emerald-50 text-emerald-600 flex items-center justify-center";
+            text.innerText = "Radius Kantor";
+            text.className = "text-[10px] font-black uppercase tracking-[0.15em] text-emerald-600";
+            locName.innerText = "Posisi aman, silakan mulai verifikasi wajah.";
+            btn.innerText = "Mulai Verifikasi Wajah";
+            btn.className = "w-full py-5 rounded-[1.5rem] bg-indigo-600 text-white font-black text-[11px] tracking-[0.2em] uppercase shadow-indigo-200 shadow-lg active:scale-95";
+            visitFields.classList.add('hidden');
+            document.getElementById('in-cat').value = 'office';
+        } else {
+            isWithinRadius = false;
+            icon.className = "w-14 h-14 rounded-[1.2rem] bg-amber-50 text-amber-600 flex items-center justify-center";
+            text.innerText = "Luar Jangkauan";
+            text.className = "text-[10px] font-black uppercase tracking-[0.15em] text-amber-600";
+            locName.innerText = `Jarak anda ${Math.round(distance)}m dari titik kantor.`;
+            btn.innerText = "Lanjut Absen Kunjungan";
+            btn.className = "w-full py-5 rounded-[1.5rem] bg-amber-500 text-white font-black text-[11px] tracking-[0.2em] uppercase shadow-amber-200 shadow-lg active:scale-95";
+            visitFields.classList.remove('hidden');
+            document.getElementById('in-cat').value = 'visit';
+        }
     }
 
-    // --- UTILS ---
-    function calculateDistance(lat1, lon1, lat2, lon2) {
-        const R = 6371; // Radius bumi KM
-        const dLat = (lat2 - lat1) * Math.PI / 180;
-        const dLon = (lon2 - lon1) * Math.PI / 180;
-        const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
-                  Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-                  Math.sin(dLon/2) * Math.sin(dLon/2);
-        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-        return R * c;
+    // 3. Alur Kamera
+    async function checkAndProceed() {
+        if (!isWithinRadius) {
+            const addr = document.getElementById('address_name').value;
+            if (!addr) return Swal.fire('Data Kurang', 'Sebutkan lokasi kunjungan anda!', 'warning');
+            document.getElementById('in-address').value = addr;
+            document.getElementById('in-notes').value = document.getElementById('notes').value;
+        }
+
+        document.getElementById('section-map').classList.add('hidden');
+        document.getElementById('section-camera').classList.remove('hidden');
+        
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ 
+                video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } } 
+            });
+            document.getElementById('video').srcObject = stream;
+        } catch (e) {
+            Swal.fire('Akses Kamera Ditolak', 'Sistem membutuhkan kamera untuk Face ID.', 'error');
+            backToMap();
+        }
     }
 
-    function takeSnapshot(type) {
-        const context = canvas.getContext('2d');
+    function backToMap() {
+        document.getElementById('section-map').classList.remove('hidden');
+        document.getElementById('section-camera').classList.add('hidden');
+        const stream = document.getElementById('video').srcObject;
+        if (stream) stream.getTracks().forEach(track => track.stop());
+    }
+
+    function capture() {
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
         canvas.width = video.videoWidth;
         canvas.height = video.videoHeight;
-        context.drawImage(video, 0, 0);
         
-        const photo = canvas.toDataURL('image/jpeg', 0.8);
-        const lat = document.getElementById('latitude').value;
-        const lng = document.getElementById('longitude').value;
+        // Mirror Effect
+        ctx.translate(canvas.width, 0);
+        ctx.scale(-1, 1);
+        ctx.drawImage(video, 0, 0);
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
 
-        // Efek Flash
-        const flash = document.createElement('div');
-        flash.className = 'absolute inset-0 bg-white z-50 transition-opacity duration-200';
-        document.body.appendChild(flash);
-        setTimeout(() => { flash.classList.add('opacity-0'); setTimeout(()=>flash.remove(), 200); }, 50);
-
-        // Kirim
-        Swal.fire({
-            title: 'Memproses Wajah...',
-            text: 'Mohon tunggu sebentar',
-            allowOutsideClick: false,
-            didOpen: () => Swal.showLoading()
+        // Watermark Data
+        ctx.fillStyle = "white";
+        ctx.font = "bold 16px sans-serif";
+        const timestamp = new Date().toLocaleString('id-ID');
+        ctx.shadowColor = "black"; ctx.shadowBlur = 7;
+        ctx.fillText(timestamp, 20, canvas.height - 40);
+        ctx.font = "12px sans-serif";
+        ctx.fillText("GPS: " + document.getElementById('in-lat').value + ", " + document.getElementById('in-lng').value, 20, canvas.height - 20);
+        
+        document.getElementById('in-img').value = canvas.toDataURL('image/jpeg', 0.85);
+        
+        Swal.fire({ 
+            title: 'Verifikasi...', 
+            text: 'Mengirim data ke server PT. Happy Momo',
+            allowOutsideClick: false, 
+            didOpen: () => Swal.showLoading() 
         });
-
-        fetch("{{ route('employee.attendance.store') }}", {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]').getAttribute('content')
-            },
-            body: JSON.stringify({ photo, latitude: lat, longitude: lng, type })
-        })
-        .then(res => res.json())
-        .then(data => {
-            if(data.status === 'success') {
-                Swal.fire('Berhasil!', data.message, 'success').then(() => {
-                    window.location.href = "{{ route('employee.dashboard') }}";
-                });
-            } else {
-                Swal.fire('Gagal!', data.message, 'error');
-            }
-        })
-        .catch(err => Swal.fire('Error', 'Terjadi kesalahan sistem', 'error'));
+        
+        document.getElementById('form-absen').submit();
     }
+
+    function calculateDistance(lat1, lon1, lat2, lon2) {
+        const R = 6371; // km
+        const dLat = (lat2-lat1) * Math.PI/180;
+        const dLon = (lon2-lon1) * Math.PI/180;
+        const a = Math.sin(dLat/2) * Math.sin(dLat/2) + Math.cos(lat1*Math.PI/180) * Math.cos(lat2*Math.PI/180) * Math.sin(dLon/2) * Math.sin(dLon/2);
+        return R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)));
+    }
+
+    window.onload = initMap;
 </script>
 @endpush

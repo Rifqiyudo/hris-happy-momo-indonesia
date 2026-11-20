@@ -4,26 +4,32 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use Carbon\Carbon;
+use Illuminate\Database\Eloquent\SoftDeletes; // Tambahkan ini
 
 class Shift extends Model
 {
-    use HasFactory;
+    use HasFactory, SoftDeletes;
 
+    // Sesuaikan dengan kolom baru di database
     protected $fillable = [
         'name',
-        'day_number', // 1=Senin, 6=Sabtu
-        'clock_in',
-        'clock_out',
-        'is_holiday'
+        'code',
+        'start_time',
+        'end_time',
+        'break_start',
+        'break_end',
+        'late_tolerance',
+        'early_leave_tolerance',
+        'is_night_shift',
+        'is_holiday',
+        'color',
+        'description'
     ];
 
-    // Helper: Ambil Shift hari ini otomatis
-    public static function getCurrentShift()
-    {
-        // Carbon::now()->dayOfWeekIso mengembalikan 1 (Senin) s/d 7 (Minggu)
-        $today = Carbon::now()->dayOfWeekIso; 
-        
-        return self::where('day_number', $today)->first();
-    }
+    // Opsional: Casting agar outputnya rapi
+    protected $casts = [
+        'is_night_shift' => 'boolean',
+        'is_holiday' => 'boolean',
+        'late_tolerance' => 'integer',
+    ];
 }

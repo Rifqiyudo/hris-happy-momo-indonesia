@@ -25,7 +25,7 @@ class RoleMiddleware
             // Jika Karyawan coba akses halaman Admin -> Lempar ke Portal Karyawan
             return redirect()->route('employee.dashboard');
         }
-
+                                                                                                                                                
         return $next($request);
     }
 }
